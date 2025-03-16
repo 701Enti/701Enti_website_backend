@@ -1,0 +1,5 @@
+# 使用 openjdk 作为基础镜像
+FROM openjdk:latest
+
+# 设置最终工作目录
+WORKDIR /app
