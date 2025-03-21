@@ -21,36 +21,92 @@
 //        SOFTWARE.
 package com.org701enti.service;
 
-import jakarta.annotation.Nonnull;
-import jakarta.annotation.Nullable;
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
+@Slf4j
+@Service
 public class RemoteService {
     private static final String GITHUB_GIT_CLONE_BASE_URL = "https://github.com";//GitHub git clone请求头部
     private static final String GITHUB_API_BASE_URL = "https://api.github.com";//GitHub API头部
     private static final String ORG_NAME = "701Enti";//在Github的组织名
 
+    /**
+     * 远程信息的常规定时更新
+     */
+    @Scheduled(fixedRate = 20 * 1000)
+    public void remoteInformationUpdateRoutine() {
+        Flux.just(
+                        Mono.zip(
+                                Mono.just(TaskData.TaskLabel.GET_REMOTE_REPOSITORY_INFORMATION),
+                                Mono.fromCallable(RemoteService::getRemoteRepositoryInformation).subscribeOn(Schedulers.boundedElastic())
+                        )
+                )
+                .flatMap(mono -> mono)
+                .map(tuple -> new TaskData(tuple.getT1(), tuple.getT2()))//从元组提取标签和结果缓存到TaskData实例
+                .subscribe(
+                        taskData -> {
+
+                        },
+                        error -> log.error("remoteInformationUpdateRoutine无法完成,因为:", error)
+                );
+    }
+
+    public class TaskData {
+        @Getter
+        private TaskLabel label;//任务标签,TaskLabel是一个枚举类型,用于识别任务以分类操作
+        @Getter
+        private Object result;//任务结果,为生产者提供的唯一对应结果
+
+        public void setLabel(TaskLabel label) {
+            this.label = label;
+        }
+
+        public void setResult(Object result) {
+            this.result = result;
+        }
+
+        public TaskData(TaskLabel label, Object result) {
+            this.label = label;
+            this.result = result;
+        }
+
+        /**
+         * 任务标签,用于识别任务以分类操作
+         */
+        public enum TaskLabel {
+            GET_REMOTE_REPOSITORY_INFORMATION,
+        }
+
+    }
+
 
     /**
-     * 列出组织的所有存储库信息
-     * @param tag 调用本方法的方法的名字
+     * 获取组织的所有存储库信息
+     *
      * @return 请求Github API获得的响应实体数据
      */
-    public static ResponseEntity<String> listAllRemoteRepositoryInformation(@Nonnull String tag){
+    private static ResponseEntity<String> getRemoteRepositoryInformation() {
         RestTemplate restTemplate = new RestTemplate();
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Accept","application/vnd.github+json");
-        headers.set("User-Agent","701Enti-website-backend-"+tag);
+        headers.set("Accept", "application/vnd.github+json");
+        headers.set("User-Agent", "701Enti-website-backend-" + "RemoteService");
         HttpEntity<String> requestEntity = new HttpEntity<>(headers);
         return restTemplate.exchange(
-                GITHUB_API_BASE_URL+"/orgs"+"/"+ORG_NAME+"/repos",
+                GITHUB_API_BASE_URL + "/orgs" + "/" + ORG_NAME + "/repos",
                 HttpMethod.GET,
                 requestEntity,
-                String.class
-        );
+                String.class);
     }
+
 }
